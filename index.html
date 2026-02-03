@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Attendance System</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(135deg, #e3f2fd, #f8f9fa);
+      margin: 0; padding: 0;
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 90%; max-width: 900px;
+      background: #fff;
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h2 { color: #0d6efd; margin-bottom: 12px; }
+    .hint { color:#555; font-size:15px; margin:10px 0; }
+    .pill {
+      display:inline-block; margin:4px 6px; padding:5px 12px;
+      background:#e7f1ff; border-radius:999px; border:1px solid #cfe2ff;
+      font-size:14px;
+    }
+    button {
+      padding: 10px 20px; margin: 12px 6px;
+      border:none; border-radius:8px;
+      font-size:16px; cursor:pointer;
+    }
+    .voice-btn { background:#0d6efd; color:#fff; }
+    .download-btn { background:#198754; color:#fff; }
+    #heard { font-style:italic; color:#444; }
+    #result { margin-top:15px; font-weight:bold; }
+    .success { color:green; }
+    .error { color:red; }
+
+    table {
+      margin:20px auto; border-collapse:collapse; width:100%;
+      background:#fff; border-radius:10px; overflow:hidden;
+      box-shadow:0 2px 6px rgba(0,0,0,0.1);
+    }
+    th, td { padding:12px; border-bottom:1px solid #ddd; }
+    th { background:#0d6efd; color:#fff; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>🎓 Attendance System</h2>
+
+  <div class="hint">Registered Students:</div>
+  <div id="registry"></div>
+
+  <button class="voice-btn" onclick="startListening()">🎤 Speak Your Name</button>
+  <button class="download-btn" onclick="downloadCSV()">⬇ Download Attendance</button>
+
+  <p id="heard" class="hint"></p>
+  <p id="result"></p>
+
+  <table id="attendanceTable">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+  // Convert Student objects into name list
+  const students = JSON.parse('{{ students | tojson | safe }}');
+  const registeredStudents = students.map(s => s.name.toLowerCase());
+
+  document.getElementById("registry").innerHTML =
+    students.map(s => `<span class="pill">${s.name}</span>`).join("");
+
+  function addToTable(record) {
+    const tableBody = document.querySelector("#attendanceTable tbody");
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${record.name}</td>
+      <td>${record.date}</td>
+      <td style="color:green;font-weight:bold;">${record.status}</td>
+    `;
+    tableBody.appendChild(row);
+  }
+
+  function markPresent(raw) {
+    if (!raw) return;
+
+    fetch('/mark', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: raw })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === "success") {
+        document.getElementById("result").innerHTML =
+          `<span class="success">${data.message}</span>`;
+        addToTable(data.record);
+      } else {
+        document.getElementById("result").innerHTML =
+          `<span class="error">${data.message}</span>`;
+      }
+    })
+    .catch(() => {
+      document.getElementById("result").innerHTML =
+        `<span class="error">Server error. Try again.</span>`;
+    });
+  }
+
+  function startListening() {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-IN';
+    recognition.start();
+
+    recognition.onresult = event => {
+      const spoken = event.results[0][0].transcript;
+      document.getElementById("heard").textContent = `Heard: "${spoken}"`;
+      markPresent(spoken);
+    };
+  }
+
+  function downloadCSV() {
+    const rows = [["Name","Date","Status"]];
+    document.querySelectorAll("#attendanceTable tbody tr").forEach(tr => {
+      const cells = Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
+      rows.push(cells);
+    });
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "attendance.csv";
+    link.click();
+  }
+</script>
+</body>
+</html>
